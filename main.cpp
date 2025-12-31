@@ -85,9 +85,13 @@ int main() {
 
         // In tiến độ
         if (frame_idx % 50 == 0) {
-            float progress = (float)frame_idx / total_frames * 100.0f;
-            std::cout << "Processing: " << frame_idx << "/" << total_frames 
-                      << " (" << (int)progress << "%)" << "\r" << std::flush;
+            if (total_frames > 0) {
+                float progress = (float)frame_idx / total_frames * 100.0f;
+                std::cout << "Processing: " << frame_idx << "/" << total_frames 
+                          << " (" << (int)progress << "%)" << "\r" << std::flush;
+            } else {
+                std::cout << "Processing: " << frame_idx << " frames" << "\r" << std::flush;
+            }
         }
 
         frame_idx++;

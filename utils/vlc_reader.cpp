@@ -71,31 +71,21 @@ bool VLCVideoReader::initializeVideoInfo() {
         return false;
     }
     
-    // Đợi một chút để media parse xong
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Parse media để lấy thông tin (synchronous parse)
+    libvlc_media_parse_with_options(media_, libvlc_media_parse_local, -1);
     
-    // Lấy kích thước video
-    unsigned int width = 0, height = 0;
-    libvlc_video_get_size(media_player_, 0, &width, &height);
-    
-    if (width == 0 || height == 0) {
-        // Thử parse lại media
-        libvlc_media_parse_with_options(media_, libvlc_media_parse_local, -1);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        
-        libvlc_video_get_size(media_player_, 0, &width, &height);
+    // Đợi media parse xong (có thể mất thời gian với file lớn)
+    int parse_attempts = 0;
+    while (parse_attempts < 50) {
+        libvlc_media_parsed_status_t parse_status = libvlc_media_get_parsed_status(media_);
+        if (parse_status == libvlc_media_parsed_status_done) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        parse_attempts++;
     }
     
-    if (width == 0 || height == 0) {
-        std::cerr << "[WARNING] Không thể lấy kích thước video, sử dụng giá trị mặc định" << std::endl;
-        frame_width_ = 1920;
-        frame_height_ = 1080;
-    } else {
-        frame_width_ = width;
-        frame_height_ = height;
-    }
-    
-    // Lấy FPS từ media tracks
+    // Lấy FPS và kích thước từ media tracks trước (cách đáng tin cậy hơn)
     libvlc_media_track_t** tracks = nullptr;
     unsigned int track_count = 0;
     track_count = libvlc_media_tracks_get(media_, &tracks);
@@ -106,14 +96,14 @@ bool VLCVideoReader::initializeVideoInfo() {
             if (tracks[i]->i_type == libvlc_track_video) {
                 libvlc_video_track_t* video_track = tracks[i]->video;
                 if (video_track) {
+                    // Lấy kích thước từ track
+                    frame_width_ = video_track->i_width;
+                    frame_height_ = video_track->i_height;
+                    
+                    // Lấy FPS
                     if (video_track->i_frame_rate_num > 0 && video_track->i_frame_rate_den > 0) {
                         fps_ = static_cast<double>(video_track->i_frame_rate_num) / 
                                static_cast<double>(video_track->i_frame_rate_den);
-                    }
-                    // Lấy kích thước từ track nếu chưa có
-                    if (frame_width_ == 0 || frame_height_ == 0) {
-                        frame_width_ = video_track->i_width;
-                        frame_height_ = video_track->i_height;
                     }
                 }
                 break;
@@ -122,10 +112,56 @@ bool VLCVideoReader::initializeVideoInfo() {
         libvlc_media_tracks_release(tracks, track_count);
     }
     
+    // Nếu chưa lấy được kích thước từ tracks, thử từ video_get_size
+    if (frame_width_ == 0 || frame_height_ == 0) {
+        unsigned int width = 0, height = 0;
+        libvlc_video_get_size(media_player_, 0, &width, &height);
+        if (width > 0 && height > 0) {
+            frame_width_ = width;
+            frame_height_ = height;
+        } else {
+            std::cerr << "[WARNING] Không thể lấy kích thước video, sử dụng giá trị mặc định" << std::endl;
+            frame_width_ = 1920;
+            frame_height_ = 1080;
+        }
+    }
+    
+    // Lấy duration từ media (thử nhiều lần vì có thể chưa sẵn sàng ngay)
+    libvlc_time_t duration_ms = -1;
+    for (int attempt = 0; attempt < 20; attempt++) {
+        duration_ms = libvlc_media_get_duration(media_);
+        if (duration_ms > 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    // Nếu vẫn không có duration, thử play video một chút để VLC có thể lấy được
+    if (duration_ms <= 0) {
+        libvlc_media_player_play(media_player_);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        
+        for (int attempt = 0; attempt < 10; attempt++) {
+            duration_ms = libvlc_media_get_duration(media_);
+            if (duration_ms > 0) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        
+        libvlc_media_player_stop(media_player_);
+    }
+    
     // Tính tổng số frame dựa trên duration và fps
-    libvlc_time_t duration_ms = libvlc_media_get_duration(media_);
     if (duration_ms > 0 && fps_ > 0) {
         total_frames_ = static_cast<int>((duration_ms / 1000.0) * fps_);
+        std::cout << "[INFO] VLC - Duration: " << duration_ms << "ms, FPS: " << fps_ 
+                  << ", Total frames: " << total_frames_ << std::endl;
+    } else {
+        std::cerr << "[WARNING] Không thể lấy duration video (duration=" << duration_ms 
+                  << "ms, fps=" << fps_ << ")" << std::endl;
+        std::cerr << "[WARNING] Tổng số frame sẽ là 0, tiến độ có thể không chính xác" << std::endl;
+        total_frames_ = 0; // Sẽ không thể tính progress chính xác
     }
     
     // Set callback để lấy frame (format sẽ được setup trong format_setup callback)
