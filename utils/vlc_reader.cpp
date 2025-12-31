@@ -233,53 +233,91 @@ bool VLCVideoReader::read(cv::Mat& frame) {
     
     // Start playing if paused or stopped
     libvlc_state_t state = libvlc_media_player_get_state(media_player_);
+    
     if (state == libvlc_Stopped) {
+        // Reset frame_ready_ before playing to ensure we get a fresh frame
+        frame_ready_ = false;
+        
         libvlc_media_player_play(media_player_);
+        
+        // Wait for video to start playing
+        int play_attempts = 0;
+        while (play_attempts < 200) {
+            state = libvlc_media_player_get_state(media_player_);
+            if (state == libvlc_Playing || state == libvlc_Paused) {
+                break;
+            }
+            if (state == libvlc_Error || state == libvlc_Ended) {
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            play_attempts++;
+        }
         
         // Wait for format setup
         int setup_attempts = 0;
-        while (!format_setup_ && setup_attempts < 100) {
+        while (!format_setup_ && setup_attempts < 200) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             setup_attempts++;
         }
         
-        // Wait a bit for first frame
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (!format_setup_) {
+            std::cerr << "[WARNING] Format setup timeout, nhưng vẫn thử đọc frame" << std::endl;
+        }
+        
+        // Wait for first frame to be ready (longer wait for first frame)
+        int first_frame_attempts = 0;
+        while (!frame_ready_ && first_frame_attempts < 500) {  // Đợi frame đầu tiên lâu hơn (5 giây)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            first_frame_attempts++;
+            
+            // Check state while waiting
+            state = libvlc_media_player_get_state(media_player_);
+            if (state == libvlc_Error || state == libvlc_Ended) {
+                return false;
+            }
+        }
     } else if (state == libvlc_Paused) {
         // Resume playback to get next frame
+        frame_ready_ = false;  // Reset before resuming
         libvlc_media_player_set_pause(media_player_, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30)); // Small delay for frame
+        
+        // Wait for new frame
+        int attempts = 0;
+        while (!frame_ready_ && attempts < 300) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            attempts++;
+            
+            state = libvlc_media_player_get_state(media_player_);
+            if (state == libvlc_Error || state == libvlc_Ended) {
+                return false;
+            }
+        }
     }
     
     // Check if video ended
     state = libvlc_media_player_get_state(media_player_);
-    if (state == libvlc_Ended) {
+    if (state == libvlc_Ended || state == libvlc_Error) {
         return false;
     }
     
-    // Wait for frame to be ready
-    frame_ready_ = false;
-    int attempts = 0;
-    while (!frame_ready_ && attempts < 100) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        attempts++;
-        
-        // Check if ended while waiting
-        state = libvlc_media_player_get_state(media_player_);
-        if (state == libvlc_Ended) {
-            return false;
-        }
+    if (!frame_ready_) {
+        std::cerr << "[WARNING] Timeout waiting for frame to be ready" << std::endl;
+        return false;
     }
     
-    if (frame_ready_ && !frame_buffer_.empty()) {
+    // Copy frame data
+    {
         std::lock_guard<std::mutex> lock(frame_mutex_);
-        // VLC provides RGB24, convert to BGR for OpenCV
-        cv::cvtColor(frame_buffer_, frame, cv::COLOR_RGB2BGR);
-        
-        // Pause video after reading frame to allow step-by-step reading
-        libvlc_media_player_set_pause(media_player_, 1);
-        
-        return true;
+        if (!frame_buffer_.empty()) {
+            // VLC provides RGB24, convert to BGR for OpenCV
+            cv::cvtColor(frame_buffer_, frame, cv::COLOR_RGB2BGR);
+            
+            // Pause video after reading frame to allow step-by-step reading
+            libvlc_media_player_set_pause(media_player_, 1);
+            
+            return true;
+        }
     }
     
     return false;
