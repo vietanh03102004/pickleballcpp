@@ -62,49 +62,16 @@ int main() {
     // ====================================================
     // 3. TẠO VIDEO ĐÍCH
     // ====================================================
-    // Thử nhiều fourcc code khác nhau cho tương thích tốt hơn
-    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v'); // MP4V codec
-    cv::VideoWriter writer;
-    
-    // Mở writer với thử lại nếu cần
-    bool writer_opened = writer.open(Config::TARGET_VIDEO_PATH, fourcc, fps, 
-                                     cv::Size(frame_width, frame_height));
-    
-    // Nếu không mở được với MP4V, thử H264
-    if (!writer_opened) {
-        std::cout << "[WARNING] Không mở được với MP4V, thử H264..." << std::endl;
-        fourcc = cv::VideoWriter::fourcc('H', '2', '6', '4');
-        writer_opened = writer.open(Config::TARGET_VIDEO_PATH, fourcc, fps, 
-                                    cv::Size(frame_width, frame_height));
-    }
-    
-    // Nếu vẫn không được, thử XVID
-    if (!writer_opened) {
-        std::cout << "[WARNING] Không mở được với H264, thử XVID..." << std::endl;
-        fourcc = cv::VideoWriter::fourcc('X', 'V', 'I', 'D');
-        writer_opened = writer.open(Config::TARGET_VIDEO_PATH, fourcc, fps, 
-                                    cv::Size(frame_width, frame_height));
-    }
-    
-    // Nếu vẫn không được, thử MJPG
-    if (!writer_opened) {
-        std::cout << "[WARNING] Không mở được với XVID, thử MJPG..." << std::endl;
-        fourcc = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
-        writer_opened = writer.open(Config::TARGET_VIDEO_PATH, fourcc, fps, 
-                                    cv::Size(frame_width, frame_height));
-    }
+    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+    cv::VideoWriter writer(Config::TARGET_VIDEO_PATH, fourcc, fps, 
+                           cv::Size(frame_width, frame_height));
 
-    if (!writer_opened || !writer.isOpened()) {
+    if (!writer.isOpened()) {
         std::cerr << "[ERROR] Không thể tạo file video đích: " 
                   << Config::TARGET_VIDEO_PATH << std::endl;
-        std::cerr << " -> Kích thước: " << frame_width << "x" << frame_height << std::endl;
-        std::cerr << " -> FPS: " << fps << std::endl;
-        std::cerr << " -> Kiểm tra codec được hỗ trợ hoặc đường dẫn file output" << std::endl;
         cap.release();
         return -1;
     }
-    
-    std::cout << "[INFO] Video output đã được tạo thành công" << std::endl;
 
     // ====================================================
     // 4. VÒNG LẶP XỬ LÝ (Thay thế sv.process_video)
@@ -115,9 +82,7 @@ int main() {
     int frame_idx = 0;
 
     while (true) {
-        if (!cap.read(frame)) {
-            break;
-        }
+        cap >> frame;
 
         if (frame.empty()) {
             break;
