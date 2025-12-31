@@ -3,6 +3,7 @@
 #include <map>
 #include <vector>
 #include <deque>
+#include <optional>
 
 namespace BallTracking {
     struct TrackedObj {
