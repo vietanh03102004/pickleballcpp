@@ -9,6 +9,7 @@
 #include <deque>
 #include <optional>
 #include <cmath>
+#include <cstdlib>
 
 // --- Biến toàn cục ---
 static cv::dnn::Net net;
@@ -119,10 +120,12 @@ cv::Mat update(const cv::Mat& frame, int frame_idx) {
     std::vector<int> indices;
     cv::dnn::NMSBoxes(boxes, confidences, Config::CONF_THRESHOLD, 0.4f, indices);
     
-    // Lọc ra các box cuối cùng
+    // Lọc ra các box cuối cùng và confidence scores tương ứng
     std::vector<cv::Rect> ball_detections;
+    std::vector<float> ball_confidences;
     for (int idx : indices) {
         ball_detections.push_back(boxes[idx]);
+        ball_confidences.push_back(confidences[idx]);
     }
 
     // ====================================================
@@ -132,7 +135,7 @@ cv::Mat update(const cv::Mat& frame, int frame_idx) {
     // 2. LOGIC TRACKING & KALMAN FILTER
     // ====================================================
 
-    std::optional<cv::Point> center = BallTracking::try_get_main_ball(ball_detections);
+    std::optional<cv::Point> center = BallTracking::try_get_main_ball(ball_detections, ball_confidences);
     
     int cx, cy;
     bool is_measurement = false; 
