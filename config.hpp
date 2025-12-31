@@ -9,7 +9,7 @@ namespace Config {
     // Hoặc dùng dấu gạch chéo '/' để tương thích đa nền tảng tốt hơn.
     
     // Đường dẫn video nguồn mới của bạn
-    const std::string SOURCE_VIDEO_PATH = "data/WIN_20251114_15_16_33_Pro (online-video-cutter.com).mp4";
+    const std::string SOURCE_VIDEO_PATH = "in.mp4";
     
     const std::string TARGET_VIDEO_PATH = "Out.mp4";
 

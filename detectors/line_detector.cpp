@@ -8,7 +8,12 @@ namespace LineDetector {
 
     void execute(int cx, int cy, cv::Mat& frame) {
         // 1. Đọc frame đầu tiên của video để tìm line (Giống logic Python)
-        cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH);
+        // Ép dùng FFmpeg backend
+        cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
+        if (!cap.isOpened()) {
+            // Fallback: thử mở không chỉ định backend
+            cap.open(Config::SOURCE_VIDEO_PATH);
+        }
         if (!cap.isOpened()) {
             std::cerr << "[LineDetector] Không mở được video để tìm line!" << std::endl;
             return;

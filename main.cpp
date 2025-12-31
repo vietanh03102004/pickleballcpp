@@ -18,17 +18,44 @@ int main() {
     initialize_detector();
 
     // ====================================================
-    // 2. MỞ VIDEO NGUỒN
+    // 2. MỞ VIDEO NGUỒN (ÉP DÙNG FFMPEG)
     // ====================================================
     std::cout << "[INFO] Đang mở video: " << Config::SOURCE_VIDEO_PATH << std::endl;
-    cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH);
+    
+    // Ép OpenCV sử dụng FFmpeg backend
+    cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
+    
+    // Nếu không mở được với FFMPEG, thử set backend trực tiếp
+    if (!cap.isOpened()) {
+        std::cout << "[WARNING] Không mở được với CAP_FFMPEG, thử cách khác..." << std::endl;
+        cap.open(Config::SOURCE_VIDEO_PATH);
+        
+        // Thử set backend property (OpenCV 4.x+)
+        #if CV_VERSION_MAJOR >= 4
+        cap.set(cv::CAP_PROP_BACKEND, cv::CAP_FFMPEG);
+        #endif
+        
+        // Thử mở lại
+        if (!cap.isOpened()) {
+            cap.open(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
+        }
+    }
     
     if (!cap.isOpened()) {
         std::cerr << "[ERROR] Không thể mở video nguồn! " << std::endl;
         std::cerr << " -> Hãy kiểm tra lại đường dẫn trong config.hpp" << std::endl;
         std::cerr << " -> Đường dẫn hiện tại: " << Config::SOURCE_VIDEO_PATH << std::endl;
+        std::cerr << " -> Kiểm tra xem FFmpeg đã được cài đặt chưa: sudo apt-get install ffmpeg" << std::endl;
         return -1;
     }
+    
+    std::cout << "[INFO] Video đã mở thành công với backend: ";
+    #if CV_VERSION_MAJOR >= 4
+    int backend = static_cast<int>(cap.get(cv::CAP_PROP_BACKEND));
+    std::cout << backend << " (CAP_FFMPEG = " << cv::CAP_FFMPEG << ")" << std::endl;
+    #else
+    std::cout << "FFMPEG" << std::endl;
+    #endif
 
     // Lấy thông số video
     int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
