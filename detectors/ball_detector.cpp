@@ -10,6 +10,13 @@
 #include <optional>
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
+#include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 // --- Biến toàn cục ---
 static cv::dnn::Net net;
@@ -17,20 +24,94 @@ static std::deque<cv::Point> ball_positions;
 static bool bounce_flag = false;
 static std::optional<cv::Point2f> previous_predict = std::nullopt;
 
+// Hàm helper: Kiểm tra file tồn tại
+static bool file_exists(const std::string& path) {
+    std::ifstream file(path);
+    return file.good();
+}
+
+// Hàm helper: Tìm đường dẫn model (thử nhiều vị trí)
+static std::string find_model_path(const std::string& relative_path) {
+    // Danh sách các đường dẫn có thể
+    std::vector<std::string> possible_paths = {
+        relative_path,  // Từ thư mục hiện tại
+        "../" + relative_path,  // Từ build/ -> ../data/model_ver2.onnx
+        "../../" + relative_path  // Nếu chạy từ build/xxx
+    };
+    
+    // Thử lấy tên file từ đường dẫn (nếu có dấu /)
+    size_t last_slash = relative_path.find_last_of('/');
+    if (last_slash != std::string::npos && last_slash + 1 < relative_path.length()) {
+        std::string filename = relative_path.substr(last_slash + 1);
+        possible_paths.push_back(filename);
+    }
+    
+    for (const auto& path : possible_paths) {
+        if (file_exists(path)) {
+            std::cout << "[INFO] Tìm thấy model tại: " << path << std::endl;
+            return path;
+        }
+    }
+    
+    return relative_path; // Trả về đường dẫn gốc nếu không tìm thấy
+}
+
 // --- Hàm khởi tạo ---
 void initialize_detector() {
-    std::cout << "[INFO] Loading YOLO ONNX model: " << Config::MODEL_PATH << std::endl;
+    std::string model_path = find_model_path(Config::MODEL_PATH);
+    
+    std::cout << "[INFO] Loading YOLO ONNX model: " << model_path << std::endl;
+    
+    // Kiểm tra file tồn tại
+    if (!file_exists(model_path)) {
+        std::cerr << "[ERROR] Không tìm thấy file ONNX model!" << std::endl;
+        std::cerr << " -> Đường dẫn đã thử: " << model_path << std::endl;
+        std::cerr << " -> Kiểm tra file có tồn tại tại: " << Config::MODEL_PATH << std::endl;
+        std::cerr << " -> Hoặc thử đường dẫn tuyệt đối trong config.hpp" << std::endl;
+        
+        // In thư mục hiện tại để debug
+        #ifdef _WIN32
+        char current_dir[1024];
+        if (GetCurrentDirectoryA(1024, current_dir)) {
+            std::cerr << " -> Thư mục hiện tại: " << current_dir << std::endl;
+        }
+        #else
+        char current_dir[1024];
+        if (getcwd(current_dir, sizeof(current_dir)) != nullptr) {
+            std::cerr << " -> Thư mục hiện tại: " << current_dir << std::endl;
+        }
+        #endif
+        
+        exit(1);
+    }
+    
     try {
-        net = cv::dnn::readNet(Config::MODEL_PATH);
+        net = cv::dnn::readNet(model_path);
+        
+        // Kiểm tra model đã load thành công
+        if (net.empty()) {
+            std::cerr << "[ERROR] Không thể load model ONNX (net.empty())" << std::endl;
+            exit(1);
+        }
+        
         if (cv::cuda::getCudaEnabledDeviceCount() > 0) {
             net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
             net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+            std::cout << "[INFO] Sử dụng CUDA backend" << std::endl;
         } else {
             net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
             net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+            std::cout << "[INFO] Sử dụng CPU backend" << std::endl;
         }
+        
+        std::cout << "[INFO] Model đã load thành công!" << std::endl;
+    } catch (const cv::Exception& e) {
+        std::cerr << "[ERROR] OpenCV Exception khi load model: " << e.what() << std::endl;
+        std::cerr << " -> File: " << model_path << std::endl;
+        exit(1);
     } catch (const std::exception& e) {
-        std::cerr << "[ERROR] " << e.what() << std::endl;
+        std::cerr << "[ERROR] Exception khi load model: " << e.what() << std::endl;
+        std::cerr << " -> File: " << model_path << std::endl;
         exit(1);
     }
     KalmanUtils::reset_kalman();
