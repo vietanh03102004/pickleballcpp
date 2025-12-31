@@ -6,7 +6,10 @@
 #include "config.hpp" 
 
 // Include file header của detector
-#include "detectors/ball_detector.hpp" 
+#include "detectors/ball_detector.hpp"
+
+// Include VLC video reader
+#include "utils/vlc_reader.hpp" 
 
 int main() {
     // ====================================================
@@ -18,44 +21,21 @@ int main() {
     initialize_detector();
 
     // ====================================================
-    // 2. MỞ VIDEO NGUỒN (ÉP DÙNG FFMPEG)
+    // 2. MỞ VIDEO NGUỒN (SỬ DỤNG VLC)
     // ====================================================
-    std::cout << "[INFO] Đang mở video: " << Config::SOURCE_VIDEO_PATH << std::endl;
+    std::cout << "[INFO] Đang mở video bằng VLC: " << Config::SOURCE_VIDEO_PATH << std::endl;
     
-    // Ép OpenCV sử dụng FFmpeg backend
-    cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
-    
-    // Nếu không mở được với FFMPEG, thử set backend trực tiếp
-    if (!cap.isOpened()) {
-        std::cout << "[WARNING] Không mở được với CAP_FFMPEG, thử cách khác..." << std::endl;
-        cap.open(Config::SOURCE_VIDEO_PATH);
-        
-        // Thử set backend property (OpenCV 4.x+)
-        #if CV_VERSION_MAJOR >= 4
-        cap.set(cv::CAP_PROP_BACKEND, cv::CAP_FFMPEG);
-        #endif
-        
-        // Thử mở lại
-        if (!cap.isOpened()) {
-            cap.open(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
-        }
-    }
-    
-    if (!cap.isOpened()) {
-        std::cerr << "[ERROR] Không thể mở video nguồn! " << std::endl;
+    // Sử dụng VLC để đọc video
+    VLCVideoReader cap;
+    if (!cap.open(Config::SOURCE_VIDEO_PATH)) {
+        std::cerr << "[ERROR] Không thể mở video nguồn bằng VLC! " << std::endl;
         std::cerr << " -> Hãy kiểm tra lại đường dẫn trong config.hpp" << std::endl;
         std::cerr << " -> Đường dẫn hiện tại: " << Config::SOURCE_VIDEO_PATH << std::endl;
-        std::cerr << " -> Kiểm tra xem FFmpeg đã được cài đặt chưa: sudo apt-get install ffmpeg" << std::endl;
+        std::cerr << " -> Kiểm tra xem VLC đã được cài đặt chưa (libvlc-dev trên Linux, vlc trên Windows)" << std::endl;
         return -1;
     }
     
-    std::cout << "[INFO] Video đã mở thành công với backend: ";
-    #if CV_VERSION_MAJOR >= 4
-    int backend = static_cast<int>(cap.get(cv::CAP_PROP_BACKEND));
-    std::cout << backend << " (CAP_FFMPEG = " << cv::CAP_FFMPEG << ")" << std::endl;
-    #else
-    std::cout << "FFMPEG" << std::endl;
-    #endif
+    std::cout << "[INFO] Video đã mở thành công với VLC" << std::endl;
 
     // Lấy thông số video
     int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
@@ -89,7 +69,9 @@ int main() {
     int frame_idx = 0;
 
     while (true) {
-        cap >> frame;
+        if (!cap.read(frame)) {
+            break;
+        }
 
         if (frame.empty()) {
             break;

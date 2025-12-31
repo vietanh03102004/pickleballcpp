@@ -1,5 +1,6 @@
 #include "line_detector.hpp"
 #include "../config.hpp"
+#include "../utils/vlc_reader.hpp"
 #include <iostream>
 #include <cmath>
 #include <vector>
@@ -8,18 +9,17 @@ namespace LineDetector {
 
     void execute(int cx, int cy, cv::Mat& frame) {
         // 1. Đọc frame đầu tiên của video để tìm line (Giống logic Python)
-        // Ép dùng FFmpeg backend
-        cv::VideoCapture cap(Config::SOURCE_VIDEO_PATH, cv::CAP_FFMPEG);
-        if (!cap.isOpened()) {
-            // Fallback: thử mở không chỉ định backend
-            cap.open(Config::SOURCE_VIDEO_PATH);
-        }
-        if (!cap.isOpened()) {
+        // Sử dụng VLC để đọc video
+        VLCVideoReader cap;
+        if (!cap.open(Config::SOURCE_VIDEO_PATH)) {
             std::cerr << "[LineDetector] Không mở được video để tìm line!" << std::endl;
             return;
         }
         cv::Mat img;
-        cap >> img; // Đọc 1 frame
+        if (!cap.read(img)) { // Đọc 1 frame
+            cap.release();
+            return;
+        }
         cap.release();
 
         if (img.empty()) return;
