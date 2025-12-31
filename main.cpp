@@ -37,12 +37,33 @@ int main() {
     
     std::cout << "[INFO] Video đã mở thành công với VLC" << std::endl;
 
-    // Lấy thông số video
-    int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
-    int frame_height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    // Lấy FPS và tổng số frame từ properties
     double fps = cap.get(cv::CAP_PROP_FPS);
     int total_frames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    
+    if (fps <= 0) {
+        std::cerr << "[WARNING] FPS không hợp lệ: " << fps << ", sử dụng FPS mặc định: 30.0" << std::endl;
+        fps = 30.0;
+    }
 
+    // ====================================================
+    // 3. ĐỌC FRAME ĐẦU TIÊN ĐỂ LẤY KÍCH THƯỚC CHÍNH XÁC
+    // ====================================================
+    std::cout << "[INFO] Đang đọc frame đầu tiên để lấy kích thước..." << std::endl;
+    
+    cv::Mat first_frame;
+    cap >> first_frame;
+    
+    if (first_frame.empty()) {
+        std::cerr << "[ERROR] Không thể đọc frame đầu tiên từ video!" << std::endl;
+        cap.release();
+        return -1;
+    }
+    
+    // Lấy kích thước thực tế từ frame (chính xác hơn properties)
+    int frame_width = first_frame.cols;
+    int frame_height = first_frame.rows;
+    
     std::cout << "[INFO] Video: " << frame_width << "x" << frame_height 
               << " @ " << fps << " FPS. Tổng frame: " << total_frames << std::endl;
 
@@ -53,14 +74,9 @@ int main() {
         cap.release();
         return -1;
     }
-    
-    if (fps <= 0) {
-        std::cerr << "[WARNING] FPS không hợp lệ: " << fps << ", sử dụng FPS mặc định: 30.0" << std::endl;
-        fps = 30.0;
-    }
 
     // ====================================================
-    // 3. TẠO VIDEO ĐÍCH
+    // 4. TẠO VIDEO ĐÍCH
     // ====================================================
     int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
     cv::VideoWriter writer(Config::TARGET_VIDEO_PATH, fourcc, fps, 
@@ -69,17 +85,32 @@ int main() {
     if (!writer.isOpened()) {
         std::cerr << "[ERROR] Không thể tạo file video đích: " 
                   << Config::TARGET_VIDEO_PATH << std::endl;
+        std::cerr << "[ERROR] Kích thước: " << frame_width << "x" << frame_height 
+                  << ", FPS: " << fps << std::endl;
         cap.release();
         return -1;
     }
+    
+    std::cout << "[INFO] VideoWriter đã được tạo thành công" << std::endl;
 
     // ====================================================
-    // 4. VÒNG LẶP XỬ LÝ (Thay thế sv.process_video)
+    // 5. VÒNG LẶP XỬ LÝ (Thay thế sv.process_video)
     // ====================================================
     std::cout << "[INFO] Bắt đầu xử lý..." << std::endl;
 
+    // Xử lý frame đầu tiên đã đọc
+    cv::Mat processed_frame = update(first_frame, 0);
+    writer.write(processed_frame);
+    
+    // In tiến độ cho frame đầu tiên
+    if (total_frames > 0) {
+        float progress = (float)1 / total_frames * 100.0f;
+        std::cout << "Processing: 1/" << total_frames 
+                  << " (" << (int)progress << "%)" << "\r" << std::flush;
+    }
+
     cv::Mat frame;
-    int frame_idx = 0;
+    int frame_idx = 1;  // Bắt đầu từ 1 vì đã xử lý frame 0
 
     while (true) {
         cap >> frame;
@@ -90,6 +121,14 @@ int main() {
 
         // Gọi hàm xử lý chính (update) từ ball_detector
         cv::Mat processed_frame = update(frame, frame_idx);
+
+        // Kiểm tra kích thước frame có khớp với VideoWriter không
+        if (processed_frame.cols != frame_width || processed_frame.rows != frame_height) {
+            std::cerr << std::endl << "[ERROR] Frame " << frame_idx 
+                      << " có kích thước " << processed_frame.cols << "x" << processed_frame.rows
+                      << " không khớp với VideoWriter " << frame_width << "x" << frame_height << std::endl;
+            break;
+        }
 
         // Ghi vào video đích
         writer.write(processed_frame);
