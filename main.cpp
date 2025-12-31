@@ -94,13 +94,14 @@ int main() {
     std::cout << "[INFO] VideoWriter đã được tạo thành công" << std::endl;
 
     // ====================================================
-    // 5. VÒNG LẶP XỬ LÝ (Thay thế sv.process_video)
+    // 5. VÒNG LẶP XỬ LÝ - GHI TRỰC TIẾP FRAME ĐỌC ĐƯỢC (DEBUG MODE)
     // ====================================================
-    std::cout << "[INFO] Bắt đầu xử lý..." << std::endl;
+    std::cout << "[INFO] Bắt đầu ghi video (ghi trực tiếp frame đọc được, không qua xử lý)..." << std::endl;
 
-    // Xử lý frame đầu tiên đã đọc
-    cv::Mat processed_frame = update(first_frame, 0);
-    writer.write(processed_frame);
+    // Ghi frame đầu tiên đã đọc trực tiếp
+    std::cout << "[DEBUG] Frame đầu tiên - kích thước: " << first_frame.cols << "x" << first_frame.rows 
+              << ", channels: " << first_frame.channels() << std::endl;
+    writer.write(first_frame);
     
     // In tiến độ cho frame đầu tiên
     if (total_frames > 0) {
@@ -110,28 +111,26 @@ int main() {
     }
 
     cv::Mat frame;
-    int frame_idx = 1;  // Bắt đầu từ 1 vì đã xử lý frame 0
+    int frame_idx = 1;  // Bắt đầu từ 1 vì đã ghi frame 0
 
     while (true) {
         cap >> frame;
 
         if (frame.empty()) {
+            std::cout << std::endl << "[INFO] Đã đọc hết video (frame rỗng tại frame " << frame_idx << ")" << std::endl;
             break;
         }
-
-        // Gọi hàm xử lý chính (update) từ ball_detector
-        cv::Mat processed_frame = update(frame, frame_idx);
 
         // Kiểm tra kích thước frame có khớp với VideoWriter không
-        if (processed_frame.cols != frame_width || processed_frame.rows != frame_height) {
-            std::cerr << std::endl << "[ERROR] Frame " << frame_idx 
-                      << " có kích thước " << processed_frame.cols << "x" << processed_frame.rows
+        if (frame.cols != frame_width || frame.rows != frame_height) {
+            std::cerr << std::endl << "[WARNING] Frame " << frame_idx 
+                      << " có kích thước " << frame.cols << "x" << frame.rows
                       << " không khớp với VideoWriter " << frame_width << "x" << frame_height << std::endl;
-            break;
+            std::cerr << "[INFO] Vẫn thử ghi frame này..." << std::endl;
         }
 
-        // Ghi vào video đích
-        writer.write(processed_frame);
+        // Ghi trực tiếp frame đọc được vào video (KHÔNG qua xử lý)
+        writer.write(frame);
 
         // In tiến độ
         if (frame_idx % 50 == 0) {
